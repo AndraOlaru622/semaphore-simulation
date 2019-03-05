@@ -1,0 +1,105 @@
+#include <stdio.h>
+#include <pthread.h>
+#include <stdlib.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+pthread_mutex_t mtx;
+pthread_t thr[10];
+int v[10], n;
+struct{
+int val, nr_lista, count;
+pthread_cond_t cond;
+}sem;
+ 
+void eventopen()
+{ const char msg[]="Event opened\n";
+    write(STDOUT_FILENO, msg, sizeof(msg)-1);
+ sem.nr_lista = 0;
+ sem.val = 0;
+ sem.count = 0;
+}
+ 
+void eventclose()
+{
+ 
+    const char msg[]="Event closed\n";
+    write(STDOUT_FILENO, msg, sizeof(msg)-1);
+ 
+}
+void eventwait()
+{
+    pthread_mutex_lock(&mtx);
+    sem.val--;
+    if(sem.val < 0){
+      do{
+         pthread_cond_wait(&sem.cond, &mtx);
+         
+         }while(sem.nr_lista < 1);
+    sem.nr_lista--;
+    }
+    pthread_mutex_unlock(&mtx);
+}
+ 
+void eventsignal(){
+    pthread_mutex_lock(&mtx);
+    sem.val++;
+    if(sem.val <= 0){
+       sem.nr_lista++;
+       pthread_cond_signal(&sem.cond);
+ 
+    }
+    pthread_mutex_unlock(&mtx);
+}
+ 
+void barrier_point(){
+    pthread_mutex_lock(&mtx);
+    sem.count++;
+    pthread_mutex_unlock(&mtx);
+    if(sem.count == n)
+    {
+        for(int i=1; i<sem.count; i++)
+        eventsignal();
+    }
+     else
+            eventwait();
+}
+ 
+void* event (void *v)
+{
+    int sum = 0;
+    int* nr1 = (int *) v;
+    int vi=*nr1;
+ 
+    do
+    {
+        sum = sum + vi%10;
+        vi = vi/10;
+    }while(vi);
+    printf("Numar la bariera: %d\n", *nr1);
+    barrier_point();
+    printf("Suma cifre: %d Numar: %d\n", sum, *nr1);
+    return NULL;
+}
+int main(int argc, char *argv[])
+{
+    n = atoi(argv[1]);
+    eventopen();
+    pthread_mutex_init(&mtx, NULL);
+ 
+    for(int  i=0; i<n; i++)
+        {v[i] = atoi(argv[i+2]);
+ 
+        }
+    for( int i=0; i<n; i++)
+        {
+            pthread_create(&(thr[i]), NULL, event, &v[i]);}
+ 
+    for(int i=0; i<n; i++)
+        pthread_join(thr[i], NULL);
+    pthread_mutex_destroy(&mtx);
+    eventclose();
+    return 0;
+}
